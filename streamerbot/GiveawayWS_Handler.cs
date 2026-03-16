@@ -85,9 +85,9 @@ public class CPHInline
             {
                 var p = JsonConvert.DeserializeObject<Dictionary<string, object>>(uRaw);
                 p["key"] = userKey;
-                // tickets immer als double senden damit JSON "1.0" statt "1" serialisiert
+                // tickets als double mit InvariantCulture parsen
                 if (p.ContainsKey("tickets"))
-                    p["tickets"] = Convert.ToDouble(p["tickets"]);
+                    p["tickets"] = GetDbl(p, "tickets");
                 participants.Add(p);
             }
             catch { }
