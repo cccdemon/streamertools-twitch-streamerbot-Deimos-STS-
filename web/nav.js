@@ -12,6 +12,8 @@
     { sep: true },
     { href: 'streamerbot.html',     label: 'C# ACTIONS',    group: 'tools', color: 'gold' },
     { sep: true },
+    { href: 'spacefight-admin.html', label: 'SF ADMIN', group: 'tools', color: 'gold' },
+    { sep: true },
     { href: 'giveaway-overlay.html', label: 'GW OVERLAY',   group: 'obs', obs: true },
     { href: 'giveaway-join.html',   label: 'JOIN ANIM',     group: 'obs', obs: true },
     { href: 'chat.html',            label: 'HUD CHAT',      group: 'obs', obs: true },

@@ -1,8 +1,9 @@
 # Chaos Crew – Giveaway System v4
 
-HUD-styled Giveaway-System für Twitch Streams. Daten werden persistent in
-Streamerbot Global Variables gespeichert. Die Web-Oberfläche läuft als
-Docker-Container (Nginx) und kommuniziert per WebSocket mit Streamerbot.
+HUD-styled Giveaway-System für Twitch Streams mit Chat-Game (Raumkampf),
+Wall of Fame, Debug-Console und vollständiger Input-Validierung.
+Daten persistent in Redis gespeichert, Web-Oberfläche als Docker-Container,
+Kommunikation per WebSocket mit Streamerbot.
 
 ---
 
@@ -10,296 +11,378 @@ Docker-Container (Nginx) und kommuniziert per WebSocket mit Streamerbot.
 
 ### Voraussetzungen
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installiert
+- [Docker](https://www.docker.com/products/docker-desktop/) installiert
 - [Streamerbot](https://streamer.bot) v1.0.4 oder neuer
 - OBS Studio
 
-### 1. Container starten
+### 1. Konfigurieren
 
 ```bash
-docker-compose up -d
+cp .env.example .env
+# .env anpassen: SB_HOST = IP des PCs mit Streamerbot
 ```
 
-Erreichbar unter: `http://localhost:8080`
+### 2. Container starten
 
-### 2. Streamerbot einrichten
+```bash
+docker compose up -d --build
+```
 
-Öffne Streamerbot und lege **3 Actions** an:
+Control Center: `http://<SERVER-IP>/`  
+Redis Admin:    `http://<SERVER-IP>:8081/`
 
-#### Action 1: GW – Viewer Tick
-| Feld     | Wert                        |
-|----------|-----------------------------|
-| Name     | GW – Viewer Tick            |
-| Trigger  | Present Viewer              |
-| Code     | `streamerbot/GW_A_ViewerTick.cs` |
+### 3. Streamerbot einrichten
 
-#### Action 2: GW – Chat Message
-| Feld     | Wert                           |
-|----------|--------------------------------|
-| Name     | GW – Chat Message              |
-| Trigger  | Twitch → Chat Message          |
-| Code     | `streamerbot/GW_B_ChatMessage.cs` |
+Alle C# Actions sind unter `http://<SERVER-IP>/streamerbot.html` mit Copy-Button abrufbar.
 
-#### Action 3: GW – WS Handler
-| Feld     | Wert                              |
-|----------|-----------------------------------|
-| Name     | GW – WS Handler                   |
-| Trigger  | Core → WebSocket → Custom Server → Custom Server Message |
-| Code     | `streamerbot/GiveawayWS_Handler.cs` |
+Lege **6 Actions** in Streamerbot an:
 
-Für jede Action: Sub-Actions → Add → Core → C# Code → Execute Method: `Execute`
+| Action | Trigger | Datei |
+|---|---|---|
+| GW – Viewer Tick | Twitch → Present Viewer | `GW_A_ViewerTick.cs` |
+| GW – Chat Message | Twitch → Chat Message (alle) | `GW_B_ChatMessage.cs` |
+| GW – WS Handler | Core → WebSocket → Custom Server Message | `GiveawayWS_Handler.cs` |
+| Spacefight – Result Handler | Core → WebSocket → Custom Server Message | `Spacefight_Handler.cs` |
+| Spacefight – Chat Forwarder | Twitch → Chat Message (Filter: `!fight`) | `SF_ChatForwarder.cs` |
+| Spacefight – Stream Status | Twitch → Stream Online + Stream Offline | `SF_StreamStatus.cs` |
+
+Für jede Action: Sub-Actions → Add → Core → **C# Execute Code** → Methode: `Execute`
 
 #### Custom WebSocket Server aktivieren
+
 ```
 Streamerbot → Servers/Clients → WebSocket Servers → Add
-Port:     9090
-Name:     WebSocken  (oder beliebig)
-Enabled:  ✓
+Port:    9090
+Name:    WebSocken
+Enabled: checked
 ```
 
-### 3. OBS Browser Sources einrichten
+#### Stream Status Action einrichten
 
-| Source           | URL                                                                 | Größe       |
-|------------------|---------------------------------------------------------------------|-------------|
-| Giveaway Overlay | `http://localhost:8080/giveaway-overlay.html?host=HOST&port=9090`  | 320 × 400px |
-| Join Animation   | `http://localhost:8080/giveaway-join.html?host=HOST&port=9090`     | 620 × 110px |
-| HUD Chat         | `http://localhost:8080/chat.html?channel=DEIN_KANAL`               | beliebig    |
+Die `SF_StreamStatus`-Action braucht **zwei Trigger** in Streamerbot:
+- Twitch → Stream Online → Action ausführen
+- Twitch → Stream Offline → Action ausführen
 
-`HOST` = IP-Adresse des PCs mit Streamerbot (z.B. `192.168.178.39`)
+### 4. OBS Browser Sources einrichten
 
-**Wichtig:** In OBS → Browser Source → Hintergrundfarbe auf **transparent** stellen.
+| Source | URL | Größe |
+|---|---|---|
+| Giveaway Overlay | `http://SERVER/giveaway-overlay.html?host=SB_IP&port=9090` | 320 × 400 px |
+| Join Animation | `http://SERVER/giveaway-join.html?host=SB_IP&port=9090` | 620 × 110 px |
+| HUD Chat | `http://SERVER/chat.html?channel=DEIN_KANAL` | beliebig |
+| Raumkampf | `http://SERVER/spacefight.html?host=SB_IP&port=9090&apihost=SERVER` | 640 × 200 px |
 
----
+`SERVER` = IP des LXC/Docker-Hosts (z.B. `192.168.178.34`)  
+`SB_IP`  = IP des PCs mit Streamerbot (z.B. `192.168.178.39`)
 
-## Admin Panel
-
-```
-http://localhost:8080/giveaway-admin.html
-```
-
-Einstellungen im Panel (werden lokal gespeichert):
-- **WS Host / Port**: IP und Port des Streamerbot Custom WS Servers
-- **Minuten pro Ticket**: Watchtime-Schwelle für ein Ticket (Standard: 120 Min)
+**Wichtig:** `apihost=` muss beim Raumkampf explizit auf die SERVER-IP gesetzt werden,
+da `host=` auf die Streamerbot-IP zeigt und die API dort nicht läuft.
 
 ---
 
 ## Giveaway Ablauf
 
-1. **Keyword setzen** (Admin Panel → Keyword // Teilnahme)
-   - Beispiel: `!mitmachen`
-   - Zuschauer schreiben das Keyword im Chat → werden registriert
-   - Kein Keyword = alle Zuschauer nehmen automatisch teil
-
+1. **Keyword setzen** → Admin Panel → Keyword eingeben (z.B. `!mitmachen`)
 2. **Giveaway öffnen** → Button "ÖFFNEN"
-
-3. Stream läuft → Tickets werden automatisch vergeben:
-   - **1 Ticket pro 2 Stunden** Watchtime (nur wenn OBS streamt)
-   - **1 Ticket pro 50 Chat-Nachrichten** (Spam-geschützt)
-
-4. **Gewinner ziehen** → Button "GEWINNER ZIEHEN"
-   - Gewinner wird im Overlay angezeigt (30 Sekunden)
-   - Reroll möglich
-
+3. Stream läuft, Tickets werden automatisch vergeben (nur wenn OBS live)
+4. **Gewinner ziehen** → Button "GEWINNER ZIEHEN" → Overlay zeigt Gewinner 30s
 5. **Giveaway schließen** → Button "SCHLIESSEN"
 
 ---
 
 ## Ticket-System
 
-### Berechnung
+### Berechnung (Dezimalwerte)
+
 ```
-Tickets = floor(watchSec / 7200) + floor(msgs / 50)
+Tickets = watchSec / 7200
 ```
 
-### Spam-Schutz (Chat-Nachrichten)
-| Regel         | Wert                              |
-|---------------|-----------------------------------|
-| Mindestlänge  | 3 Zeichen                         |
-| Cooldown      | 1 Nachricht pro 10 Sekunden zählt |
-| Duplikat      | Gleiche Nachricht wie zuvor = 0   |
+Watchtime wird nur für **registrierte Teilnehmer** gezählt (Keyword erforderlich).
 
-### Gewinnchancen
+| Quelle | Zuwachs |
+|---|---|
+| 1 Minute Watchtime (Viewer Tick) | +60s |
+| 1 Chat-Nachricht | +5s Watchtime |
+| 2 Stunden Watchtime | = 1.0 Ticket |
+| 1 Stunde Watchtime | = 0.5 Ticket |
+
+### Spam-Schutz
+
+| Regel | Wert |
+|---|---|
+| Mindestlänge | 3 Zeichen |
+| Cooldown | max 1 Nachricht pro 10 Sekunden |
+| Duplikat | gleiche Nachricht wie zuvor wird ignoriert |
+| Bots | streamelements, nightbot u.a. werden ignoriert |
+
+### InvariantCulture-Fix (deutsches Windows)
+
+Auf deutschen Windows-Systemen interpretiert `Convert.ToDouble("1.0000")` den Punkt
+als Tausendertrennzeichen. Alle Parse-Operationen nutzen daher `GetDbl()` mit
+`CultureInfo.InvariantCulture`. Tickets werden als String `"1.0000"` gespeichert.
+
+---
+
+## Raumkampf (Spacegame)
+
+Chat-Game für Twitch-Zuschauer. Ergebnisse werden in Redis gespeichert und in
+einer Wall of Fame (Best Space Pilots) angezeigt.
+
+### Starten
+
 ```
-Chance(User) = Tickets(User) / Gesamt-Tickets × 100
+!fight @username
+```
+
+### Voraussetzungen für einen Kampf
+
+| Bedingung | Beschreibung |
+|---|---|
+| Stream läuft | Streamerbot meldet `sf_status live=true` |
+| Gegner im Chat aktiv | Gegner hat in den letzten **5 Minuten** geschrieben |
+| Cooldown eingehalten | 30 Sekunden pro Angreifer |
+| Kein Selbst-Fight | Angreifer darf nicht Verteidiger sein |
+
+Wenn eine Bedingung nicht erfüllt ist, postet Streamerbot eine Meldung:
+
+```
+# Stream offline:
+@User Kein Treibstoff, keine Munition – der Hangar ist offline!
+
+# Gegner nicht im Chat:
+@User Kein Kontakt zu Gegner. Ziel ist nicht in Reichweite!
+```
+
+### Wall of Fame (OBS Overlay)
+
+- Erscheint automatisch nach jedem Kampf für **15 Sekunden**
+- Zeigt Top-10 Piloten: Rang, Wins, Losses, Winrate
+- Sieger wird hervorgehoben
+- Schließt automatisch nach 15s, manuell mit X-Button
+
+### Raumkampf Admin Panel
+
+URL: `http://SERVER/spacefight-admin.html`
+
+- Wall of Fame Tabelle mit Medals
+- Kampf-Historie (letzte 20 Kämpfe)
+- Spieler-Suche mit Rang und Stats
+- Reset mit Bestätigungs-Dialog
+- Auto-Refresh alle 30 Sekunden
+
+### Schiffsklassen
+
+| Schiff | Stärke |
+|---|---|
+| Perseus, Hammerhead, Vanguard | Stark |
+| Constellation, Arrow, Origin 300i, Gladius, Sabre, Hornet | Mittel |
+| Aurora | Schwach |
+
+### OBS Browser Source Parameter
+
+| Parameter | Beschreibung |
+|---|---|
+| `host=` | Streamerbot WS-IP |
+| `port=` | Streamerbot WS-Port (Standard: 9090) |
+| `apihost=` | Docker-Host-IP für API/Redis |
+| `apiport=` | API-Port (Standard: 3000) |
+| `test=1` | Test-Modus: Demo-Kämpfe, kein Stream-Check |
+
+---
+
+## Web-Oberflächen
+
+| URL | Beschreibung |
+|---|---|
+| `/` | Control Center |
+| `/giveaway-admin.html` | Giveaway Admin Panel |
+| `/stats.html` | Statistiken |
+| `/giveaway-test.html` | Test Console |
+| `/spacefight-admin.html` | Raumkampf Admin (WoF, Historie, Reset) |
+| `/tests/test-runner.html` | Automatische Test Suite |
+| `/streamerbot.html` | C# Actions mit Copy-Button |
+
+### Debug Console
+
+Jede Admin-Seite hat eine Debug Console am unteren Rand (28px, immer sichtbar).
+Klick öffnet das Panel mit vollständigem WS- und HTTP-Traffic-Log:
+
+- Pfeil cyan = ausgehend (WS Send / HTTP Request)
+- Pfeil grün = eingehend (WS Receive / HTTP Response)
+- X rot = Fehler / Disconnect
+- Punkt gold = Connect / Disconnect Info
+
+Klick auf eine Zeile expandiert das JSON. Filter-Feld für Live-Suche.
+
+---
+
+## Sicherheit
+
+| Layer | Schutz |
+|---|---|
+| Browser (`validate.js`) | XSS-Escaping, Prototype-Pollution-Block, WS-Whitelist, URL-Param-Sanitierung |
+| Node.js API | `safeJsonParse()`, Username-Regex, Längenlimits |
+| C# (Streamerbot) | Regex auf Usernames, Control-Char-Strip, max 500 Zeichen Messages |
+
+---
+
+## Infrastruktur
+
+### Ports
+
+| Port | Dienst |
+|---|---|
+| `80` | Web (Caddy) |
+| `443` | HTTPS (wenn DOMAIN gesetzt) |
+| `3000` | Node.js API |
+| `8081` | Redis Commander |
+
+### SSL
+
+```bash
+# HTTP only (Standard)
+DOMAIN=
+
+# Let's Encrypt SSL
+DOMAIN=stream.example.com
+CADDY_CONFIG=Caddyfile.ssl
+```
+
+### Backup
+
+```bash
+# Automatisch täglich 03:00 Uhr
+# Manuell:
+docker exec chaos-crew-backup /backup.sh
+```
+
+Aufbewahrung: 30 Tage (`KEEP_DAYS` in `.env`)
+
+### Docker Befehle
+
+```bash
+docker compose up -d --build          # Alles starten/neu bauen
+docker compose up -d --build web      # Nur Web (CSS/HTML/JS)
+docker compose up -d --build api      # Nur API (server.js)
+docker compose logs -f                # Logs
+docker compose down                   # Stoppen (Daten bleiben)
+docker compose down -v                # Stoppen + Daten löschen
 ```
 
 ---
 
-## Testen
+## Streamerbot Global Variables
 
-### Test Console (manuell)
-```
-http://localhost:8080/giveaway-test.html
-```
-
-Ermöglicht manuelles Senden aller WS-Events und Testen der Join-Animation,
-Gewinner-Anzeige und Stream-Simulation.
-
-### Automatische Test Suite
-```
-http://localhost:8080/tests/test-runner.html
-```
-
-Führt 11 automatisierte Tests durch:
-- WS-Verbindung
-- Daten abrufen
-- Giveaway öffnen/schließen
-- Tickets hinzufügen/entfernen
-- Ban/Unban
-- Keyword setzen
-- Session-Registrierungen
-- Reset
-
-**Hinweis:** Tests modifizieren Daten in Streamerbot. Nicht während einem
-aktiven Giveaway ausführen. Reset am Ende löscht alle Testdaten automatisch.
+| Variable | Persistent | Beschreibung |
+|---|---|---|
+| `gw_open` | ja | Giveaway offen/geschlossen |
+| `gw_keyword` | ja | Teilnahme-Keyword |
+| `gw_index` | ja | JSON-Array User-Keys |
+| `gw_u_{username}` | ja | JSON User-Objekt |
+| `gw_overlay_session` | nein | Session-ID Overlay |
+| `gw_join_session` | nein | Session-ID Join-Animation |
+| `gw_api_session` | nein | Session-ID Node.js API |
+| `gw_spacefight_session` | nein | Session-ID Raumkampf |
+| `sf_stream_live` | nein | Stream-Status für Raumkampf |
+| `sf_last_{w}_{l}` | nein | Dedup-Key Kampfergebnisse |
 
 ---
 
-## Datei-Struktur
+## Redis Key Schema
 
-```
-chaos-crew-giveaway/
-├── docker-compose.yml          # Docker Compose Konfiguration
-├── Dockerfile                  # Nginx-basiertes Container-Image
-├── README.md                   # Diese Datei
-├── nginx/
-│   └── nginx.conf              # Nginx Server-Konfiguration
-├── web/
-│   ├── giveaway-admin.html     # Admin Panel (HTML)
-│   ├── giveaway-admin.css      # Admin Panel (CSS)
-│   ├── giveaway-admin.js       # Admin Panel (JS)
-│   ├── giveaway-overlay.html   # OBS Overlay (HTML)
-│   ├── giveaway-overlay.css    # OBS Overlay (CSS)
-│   ├── giveaway-overlay.js     # OBS Overlay (JS)
-│   ├── giveaway-join.html      # Join-Animation (HTML)
-│   ├── giveaway-join.css       # Join-Animation (CSS)
-│   ├── giveaway-join.js        # Join-Animation (JS)
-│   ├── giveaway-test.html      # Test Console (HTML)
-│   ├── giveaway-test.css       # Test Console (CSS)
-│   ├── giveaway-test.js        # Test Console (JS)
-│   ├── chat.html               # HUD Chat (HTML)
-│   ├── chat.css                # HUD Chat (CSS)
-│   └── chat.js                 # HUD Chat (JS)
-├── streamerbot/
-│   ├── GW_A_ViewerTick.cs      # Action: Viewer Tick
-│   ├── GW_B_ChatMessage.cs     # Action: Chat Message
-│   └── GiveawayWS_Handler.cs   # Action: WebSocket Handler
-└── tests/
-    ├── test-runner.html         # Test Suite UI
-    └── tests.js                 # Test Suite Logik
-```
+| Key | Typ | Beschreibung |
+|---|---|---|
+| `gw_open` / `gw_keyword` / `gw_index` | String | Giveaway-State |
+| `gw_u_{username}` | String | JSON User-Objekt |
+| `api:session:{id}` | Hash | Session-Metadaten |
+| `api:winners` | List | Gewinner-History |
+| `api:stats:{username}` | Hash | Lifetime User-Stats |
+| `sf:stats:{username}` | Hash | Raumkampf-Stats |
+| `sf:index` | Sorted Set | Rangliste (Score = Wins) |
+| `sf:history` | List | Letzte 500 Kämpfe |
 
 ---
 
-## Streamerbot Global Variables (Referenz)
+## REST API
 
-| Variable            | Typ    | Persistent | Beschreibung                    |
-|---------------------|--------|------------|---------------------------------|
-| `gw_open`           | string | ja         | `"true"` / `"false"`            |
-| `gw_keyword`        | string | ja         | Teilnahme-Keyword               |
-| `gw_index`          | string | ja         | JSON-Array aller User-Keys      |
-| `gw_u_{username}`   | string | ja         | JSON User-Objekt                |
-| `gw_overlay_session`| string | nein       | Session-ID des Overlays         |
-| `gw_join_session`   | string | nein       | Session-ID der Join-Animation   |
-| `gw_lastmsg_{user}` | string | nein       | Letzte Chat-Nachricht (Duplikat)|
-| `gw_lasttime_{user}`| string | nein       | Letzter Chat-Timestamp          |
+### Giveaway
 
-### User-Objekt Format
-```json
-{
-  "display":    "Username",
-  "watchSec":   3600,
-  "msgs":       42,
-  "tickets":    1,
-  "banned":     false,
-  "registered": true
-}
-```
+| Method | Endpoint | Beschreibung |
+|---|---|---|
+| GET | `/health` | Status |
+| GET | `/api/participants` | Teilnehmer |
+| GET | `/api/winners` | Gewinner-History |
+| GET | `/api/leaderboard` | Watchtime-Rangliste |
+| GET | `/api/user/:username` | User-Stats |
 
----
+### Raumkampf
 
-## WebSocket Event-Protokoll
-
-### Client → Streamerbot
-
-| Event              | Parameter              | Beschreibung                  |
-|--------------------|------------------------|-------------------------------|
-| `gw_get_all`       | –                      | Alle Teilnehmer abrufen       |
-| `gw_overlay_register` | –                   | Overlay-Session registrieren  |
-| `gw_join_register` | –                      | Join-Overlay Session reg.     |
-| `gw_cmd`           | `cmd`, `user?`, `keyword?` | Admin-Befehl ausführen    |
-
-### gw_cmd Befehle
-
-| cmd               | Parameter | Beschreibung           |
-|-------------------|-----------|------------------------|
-| `gw_open`         | –         | Giveaway öffnen        |
-| `gw_close`        | –         | Giveaway schließen     |
-| `gw_add_ticket`   | `user`    | Ticket hinzufügen      |
-| `gw_sub_ticket`   | `user`    | Ticket entfernen       |
-| `gw_ban`          | `user`    | User bannen            |
-| `gw_unban`        | `user`    | User entbannen         |
-| `gw_set_keyword`  | `keyword` | Keyword setzen         |
-| `gw_get_keyword`  | –         | Keyword abrufen        |
-| `gw_reset`        | –         | Alle Daten löschen     |
-
-### Streamerbot → Client
-
-| Event        | Beschreibung                            |
-|--------------|-----------------------------------------|
-| `gw_data`    | Vollständige Teilnehmerliste            |
-| `gw_status`  | Giveaway-Status (open/closed)           |
-| `gw_ack`     | Bestätigung einer Aktion                |
-| `gw_keyword` | Aktuelles Keyword                       |
-| `gw_overlay` | Overlay-Update vom Admin-Panel          |
-| `gw_join`    | Neuer Teilnehmer (Join-Animation)       |
+| Method | Endpoint | Beschreibung |
+|---|---|---|
+| POST | `/api/spacefight` | Kampfergebnis speichern |
+| GET | `/api/spacefight/leaderboard` | Wall of Fame |
+| GET | `/api/spacefight/player/:username` | Spieler-Stats + Rang |
+| GET | `/api/spacefight/history` | Kampf-Historie |
+| POST | `/api/spacefight/reset` | Reset |
 
 ---
 
 ## Häufige Probleme
 
-**WS: OFFLINE im Admin Panel**
-- Streamerbot läuft? Custom WS Server auf Port 9090 aktiv?
-- Firewall blockiert Port 9090?
-- Host-IP korrekt in den Einstellungen?
+**Raumkampf: keine Reaktion auf !fight**
+- `SF_ChatForwarder.cs` eingespielt? Trigger: Twitch Chat Message, Filter: `!fight`
+- `SF_StreamStatus.cs` konfiguriert mit Stream Online/Offline Trigger?
+- Debug Console: kommen `chat_msg` Events an der Browser Source an?
+- URL enthält `?host=SB_IP&port=9090&apihost=SERVER-IP`?
 
-**Overlay zeigt nichts in OBS**
-- Browser Source URL korrekt? `host=` Parameter gesetzt?
-- In OBS: Browser Source → Interact → F12 → Console auf Fehler prüfen
-- Overlay muss sich einmal registriert haben (kurz im Browser öffnen)
+**Wall of Fame erscheint nicht**
+- `apihost=` Parameter gesetzt? API unter `http://SERVER:3000/health` erreichbar?
+- Kämpfe bereits stattgefunden? `spacefight-admin.html` prüfen
 
-**Tickets zählen nicht hoch**
-- Ist OBS live? `CPH.ObsIsStreaming(0)` muss true sein
-- Ist das Giveaway geöffnet? (`gw_open = "true"`)
-- Keyword gesetzt? User muss Keyword zuerst geschrieben haben
+**Kampf-Ergebnis doppelt im Chat**
+- `Spacefight_Handler.cs` neu einspielen (enthält Deduplication)
 
-**Tests schlagen fehl**
-- Streamerbot Custom WS Server aktiv?
-- Alle 3 Actions angelegt und aktiviert?
-- Kein aktives Giveaway während Tests laufen lassen
+**WS: OFFLINE**
+- Streamerbot WS Server Port 9090 aktiv? Firewall?
+
+**Tickets = 10000 statt 1**
+- Deutsches Windows: `GiveawayWS_Handler.cs` neu einspielen (InvariantCulture-Fix)
 
 ---
 
-## Docker Befehle
+## Dateistruktur
 
-```bash
-# Starten
-docker-compose up -d
-
-# Stoppen
-docker-compose down
-
-# Nach Datei-Änderungen neu bauen
-docker-compose up -d --build
-
-# Logs anzeigen
-docker-compose logs -f
-
-# Container-Status
-docker-compose ps
-
-# Shell im Container
-docker exec -it chaos-crew-giveaway sh
+```
+chaos-crew-giveaway/
+├── docker-compose.yml
+├── Dockerfile                    # Caddy Web Server
+├── .env.example
+├── caddy/                        # Caddyfile (HTTP + SSL)
+├── api/server.js                 # Node.js API + Spacefight Endpoints
+├── redis/redis.conf
+├── backup/backup.sh
+├── web/
+│   ├── validate.js               # Input Validation (alle Seiten)
+│   ├── nav.css/js                # Navigation + Debug Console
+│   ├── giveaway-admin.*          # Giveaway Admin
+│   ├── giveaway-overlay.*        # OBS Overlay
+│   ├── giveaway-join.*           # Join Animation
+│   ├── giveaway-test.*           # Test Console
+│   ├── spacefight.*              # Raumkampf OBS Overlay + WoF
+│   ├── spacefight-admin.*        # Raumkampf Admin Panel
+│   ├── chat.*                    # HUD Chat
+│   ├── stats.*                   # Statistiken
+│   └── streamerbot.html          # C# Actions Viewer
+├── streamerbot/
+│   ├── GW_A_ViewerTick.cs
+│   ├── GW_B_ChatMessage.cs
+│   ├── GiveawayWS_Handler.cs
+│   ├── Spacefight_Handler.cs
+│   ├── SF_ChatForwarder.cs       # NEU: !fight → Overlay
+│   └── SF_StreamStatus.cs        # NEU: Stream Online/Offline
+└── tests/
+    └── tests.js
 ```
 
 ---

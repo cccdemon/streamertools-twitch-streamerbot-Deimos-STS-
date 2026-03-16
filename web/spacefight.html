@@ -2,12 +2,24 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Chaos Crew â€“ Raumkampf</title>
-<link rel="stylesheet" href="spacefight.css">
+<title>Chaos Crew – Raumkampf</title>
 <script src="validate.js"></script>
+<link rel="stylesheet" href="spacefight.css">
 </head>
 <body>
 <div id="arena"></div>
+
+<!-- Wall of Fame -->
+<div id="wof">
+  <div class="wof-header">
+    <span class="wof-header-icon">??</span>
+    BEST SPACE PILOTS
+    <span class="wof-close" onclick="hideWoF()">&#x2715;</span>
+  </div>
+  <div id="wof-list"></div>
+  <div class="wof-player-rank" id="wof-player-rank"></div>
+</div>
+
 <script src="spacefight.js"></script>
 </body>
 </html>

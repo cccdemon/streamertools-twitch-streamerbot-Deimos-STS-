@@ -190,20 +190,35 @@ function testJoinAnimation() {
 function testSpacefight() {
   var attacker = document.getElementById('sf-attacker').value.trim() || 'JerichoRamirez';
   var defender = document.getElementById('sf-defender').value.trim() || 'HEADWiG';
-  // Spacefight wird direkt durch den Chat ausgeloest (!fight @user)
-  // Hier simulieren wir das Ergebnis-Event
   var ships = ['PERSEUS','HAMMERHEAD','ARROW','GLADIUS','SABRE','HORNET'];
   var shipA = ships[Math.floor(Math.random() * ships.length)];
   var shipD = ships[Math.floor(Math.random() * ships.length)];
   var attackerWins = Math.random() > 0.5;
-  send({
-    event:   'spacefight_result',
-    winner:  attackerWins ? attacker : defender,
-    loser:   attackerWins ? defender : attacker,
-    ship_w:  attackerWins ? shipA : shipD,
-    ship_l:  attackerWins ? shipD : shipA
+  var result = {
+    event:    'spacefight_result',
+    winner:   attackerWins ? attacker : defender,
+    loser:    attackerWins ? defender : attacker,
+    ship_w:   attackerWins ? shipA : shipD,
+    ship_l:   attackerWins ? shipD : shipA,
+    attacker: attacker,
+    defender: defender,
+    ts:       new Date().toISOString()
+  };
+  // WS-Event an Streamerbot
+  send(result);
+  // Direkt in API speichern (OBS-Check wird umgangen)
+  var apiHost = window.location.hostname || '192.168.178.34';
+  var apiPort = 3000;
+  fetch('http://' + apiHost + ':' + apiPort + '/api/spacefight', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(result)
+  }).then(function(r) {
+    addLog('SF API: ' + (r.ok ? 'gespeichert' : 'Fehler ' + r.status), r.ok ? 'info' : 'err');
+  }).catch(function(e) {
+    addLog('SF API Fehler: ' + e.message, 'err');
   });
-  addLog('Raumkampf-Test: ' + attacker + ' vs ' + defender, 'info');
+  addLog('Raumkampf-Sim: ' + attacker + ' vs ' + defender + ' → Sieger: ' + (attackerWins ? attacker : defender), 'info');
 }
 
 // ── Stream Simulation ─────────────────────────────────────

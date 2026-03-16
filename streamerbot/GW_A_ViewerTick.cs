@@ -66,7 +66,7 @@ public class CPHInline
         else if (args.ContainsKey("user") && args["user"] != null)
             raw = args["user"].ToString();
         if (string.IsNullOrEmpty(raw)) return null;
-        var clean = System.Text.RegularExpressions.Regex.Replace(raw.Trim(), @"[^a-zA-Z0-9_]", "");
+        var clean = new System.Func<string>(() => { var _sb = new System.Text.StringBuilder(); foreach (char _ch in raw.Trim()) if ((_ch >= 'a' && _ch <= 'z') || (_ch >= 'A' && _ch <= 'Z') || (_ch >= '0' && _ch <= '9') || _ch == '_') _sb.Append(_ch); return _sb.ToString(); })();
         return clean.Length > 0 && clean.Length <= 25 ? clean : null;
     }
 

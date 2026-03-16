@@ -22,7 +22,7 @@ public class CPHInline
 
         CPH.LogInfo("GW raw: " + raw + " | sessionId: " + sessionId);
 
-        if (!raw.Contains("gw_get_all") && !raw.Contains("gw_cmd") && !raw.Contains("gw_overlay") && !raw.Contains("gw_join_register") && !raw.Contains("gw_api_register") && !raw.Contains("spacefight_result") && !raw.Contains("chat_msg"))
+        if (!raw.Contains("gw_get_all") && !raw.Contains("gw_cmd") && !raw.Contains("gw_overlay") && !raw.Contains("gw_join_register") && !raw.Contains("gw_api_register") && !raw.Contains("spacefight_result") && !raw.Contains("chat_msg") && !raw.Contains("gw_spacefight_register") && !raw.Contains("sf_status_request"))
             return true;
 
         JObject msg;
@@ -50,6 +50,29 @@ public class CPHInline
         {
             CPH.SetGlobalVar("gw_spacefight_session", sessionId, false);
             CPH.LogInfo("GW: Spacefight registriert, session=" + sessionId);
+            // Sofort aktuellen Stream-Status zurücksenden
+            bool isLive = CPH.GetGlobalVar<bool>("sf_stream_live", false);
+            var statusMsg = new Newtonsoft.Json.Linq.JObject
+            {
+                ["event"]     = "sf_status",
+                ["live"]      = isLive,
+                ["streaming"] = isLive
+            };
+            CPH.WebsocketCustomServerBroadcast(statusMsg.ToString(), sessionId, 0);
+            return true;
+        }
+
+        if (evnt == "sf_status_request")
+        {
+            bool isLive = CPH.GetGlobalVar<bool>("sf_stream_live", false);
+            var statusMsg = new Newtonsoft.Json.Linq.JObject
+            {
+                ["event"]     = "sf_status",
+                ["live"]      = isLive,
+                ["streaming"] = isLive
+            };
+            CPH.WebsocketCustomServerBroadcast(statusMsg.ToString(), sessionId, 0);
+            CPH.LogInfo("GW: sf_status gesendet, live=" + isLive);
             return true;
         }
 
@@ -116,7 +139,11 @@ public class CPHInline
         string cmd  = msg["cmd"]?.ToString();
         // Username aus WS-Payload sanitieren: nur alphanumerisch + Unterstrich
         string rawUser = msg["user"]?.ToString() ?? "";
-        string user = System.Text.RegularExpressions.Regex.Replace(rawUser.Trim().ToLower(), @"[^a-z0-9_]", "");
+        var sbUser = new System.Text.StringBuilder();
+        foreach (char ch in rawUser.Trim().ToLower())
+            if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_')
+                sbUser.Append(ch);
+        string user = sbUser.ToString();
         if (user.Length > 25) user = user.Substring(0, 25);
         if (user.Length == 0) user = null;
         CPH.LogInfo("GW cmd: " + cmd + " user: " + user);

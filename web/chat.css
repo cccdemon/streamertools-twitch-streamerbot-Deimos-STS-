@@ -11,10 +11,19 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 8px;
+  padding: 0 8px 8px 8px;
 }
 
-#chat-container { display:flex; flex-direction:column; gap:5px; max-height:100vh; overflow:hidden; }
+#chat-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  padding-bottom: 2px;
+  /* Neue Nachrichten unten, älteste oben werden abgeschnitten */
+  justify-content: flex-end;
+}
 
 .msg {
   display: flex;
