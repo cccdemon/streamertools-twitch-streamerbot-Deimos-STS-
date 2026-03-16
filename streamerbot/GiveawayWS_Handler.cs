@@ -114,7 +114,11 @@ public class CPHInline
     private bool HandleCommand(JObject msg, string sessionId)
     {
         string cmd  = msg["cmd"]?.ToString();
-        string user = msg["user"]?.ToString()?.ToLower();
+        // Username aus WS-Payload sanitieren: nur alphanumerisch + Unterstrich
+        string rawUser = msg["user"]?.ToString() ?? "";
+        string user = System.Text.RegularExpressions.Regex.Replace(rawUser.Trim().ToLower(), @"[^a-z0-9_]", "");
+        if (user.Length > 25) user = user.Substring(0, 25);
+        if (user.Length == 0) user = null;
         CPH.LogInfo("GW cmd: " + cmd + " user: " + user);
 
         var ack = new Dictionary<string, object>();

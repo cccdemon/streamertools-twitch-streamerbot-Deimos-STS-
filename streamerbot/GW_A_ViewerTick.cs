@@ -60,11 +60,14 @@ public class CPHInline
 
     private string GetUser()
     {
+        string raw = null;
         if (args.ContainsKey("userName") && args["userName"] != null)
-            return args["userName"].ToString();
-        if (args.ContainsKey("user") && args["user"] != null)
-            return args["user"].ToString();
-        return null;
+            raw = args["userName"].ToString();
+        else if (args.ContainsKey("user") && args["user"] != null)
+            raw = args["user"].ToString();
+        if (string.IsNullOrEmpty(raw)) return null;
+        var clean = System.Text.RegularExpressions.Regex.Replace(raw.Trim(), @"[^a-zA-Z0-9_]", "");
+        return clean.Length > 0 && clean.Length <= 25 ? clean : null;
     }
 
     private bool IsBot(string user)

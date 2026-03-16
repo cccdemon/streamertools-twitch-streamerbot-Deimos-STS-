@@ -9,8 +9,8 @@ var ws = null;
 
 // ── WebSocket ─────────────────────────────────────────────
 function connect() {
-  var host = document.getElementById('host').value;
-  var port = document.getElementById('port').value;
+  var host = CC.validate.sanitize(document.getElementById('host').value, 'host');
+  var port = CC.validate.getInputVal('port', 'port', 9090);
   if (ws) { ws.onclose=null; ws.close(); }
   try {
     ws = new WebSocket('ws://' + host + ':' + port);
@@ -47,6 +47,7 @@ function disconnect() {
 
 function send(obj) {
   if (!ws || ws.readyState !== 1) { addLog('Nicht verbunden!', 'err'); return; }
+  if (!CC.validate.validateWsPayload(obj)) { addLog('Payload blockiert', 'err'); return; }
   var json = JSON.stringify(obj);
   ws.send(json);
   addLog('-> ' + pretty(json), 'send');
@@ -54,8 +55,9 @@ function send(obj) {
 
 function sendManual() {
   var raw = document.getElementById('manual-json').value.trim();
-  try { send(JSON.parse(raw)); }
-  catch(e) { addLog('Ungültiges JSON: ' + e.message, 'err'); }
+  var parsed = CC.validate.safeJsonParse(raw);
+  if (!parsed) { addLog('Ungültiges JSON', 'err'); return; }
+  send(parsed);
 }
 
 function formatJson() {

@@ -20,7 +20,7 @@ function connect() {
     ws.send(JSON.stringify({ event: 'gw_get_all' }));
   };
   ws.onmessage = function(e) {
-    try { handle(JSON.parse(e.data)); } catch(x) {}
+    try { handle(CC.validate.safeJsonParse(e.data) || {}); } catch(x) {}
   };
   ws.onclose = ws.onerror = function() { scheduleReconnect(); };
 }

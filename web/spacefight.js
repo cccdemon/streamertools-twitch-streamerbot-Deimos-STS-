@@ -65,7 +65,7 @@ function connect() {
     ws.send(JSON.stringify({ event: 'gw_spacefight_register' }));
   };
   ws.onmessage = function(e) {
-    try { handleSB(JSON.parse(e.data)); } catch(x) {}
+    try { handleSB((CC.validate.safeJsonParse(e.data) || {})); } catch(x) {}
   };
   ws.onclose = ws.onerror = function() { scheduleReconnect(); };
 }

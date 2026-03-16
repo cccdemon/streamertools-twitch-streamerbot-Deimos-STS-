@@ -24,7 +24,7 @@ let CFG = { min:120, sec:5, host:'192.168.178.39', port:9090 };
 function loadCfg() {
   try {
     const c = localStorage.getItem('cc_gw_cfg');
-    if (c) CFG = { ...CFG, ...JSON.parse(c) };
+    if (c) { const p = CC.validate.safeJsonParse(c); if (p) CFG = { ...CFG, ...p }; }
   } catch(e) {}
   const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
   setVal('cfg-min',  CFG.min);
@@ -58,7 +58,7 @@ function connectWS() {
     requestData();
     loadKeyword();
   };
-  ws.onmessage = (e) => { try { handle(JSON.parse(e.data)); } catch(err) {} };
+  ws.onmessage = (e) => { const msg = CC.validate.safeJsonParse(e.data); if (msg) handle(msg); };
   ws.onclose = ws.onerror = () => { setBadge(false); scheduleReconnect(); };
 }
 
@@ -71,6 +71,7 @@ function setBadge(on) {
 }
 
 function send(obj) {
+  if (!CC.validate.validateWsPayload(obj)) { log('Payload blockiert: ' + JSON.stringify(obj).slice(0,60), 'red'); return; }
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
   else log('WS nicht verbunden', 'red');
 }
@@ -170,8 +171,8 @@ function clearWinner() { lastWinner=null; document.getElementById('winner-card')
 
 // ── Manual Actions ────────────────────────────────────────
 function manualAdd() {
-  const name = document.getElementById('m-name').value.trim();
-  const amt  = parseInt(document.getElementById('m-amount').value) || 1;
+  const name = CC.validate.sanitize(document.getElementById('m-name').value, 'username');
+  const amt  = CC.validate.sanitizeInt(document.getElementById('m-amount').value, 1, 100, 1);
   if (!name) return;
   for (let i=0; i<amt; i++) send({ event:'gw_cmd', cmd:'gw_add_ticket', user:name });
   log(`+${amt} Ticket(s) -> ${name}`, 'cyan');
@@ -179,8 +180,8 @@ function manualAdd() {
 }
 
 function manualSub() {
-  const name = document.getElementById('m-name').value.trim();
-  const amt  = parseInt(document.getElementById('m-amount').value) || 1;
+  const name = CC.validate.sanitize(document.getElementById('m-name').value, 'username');
+  const amt  = CC.validate.sanitizeInt(document.getElementById('m-amount').value, 1, 100, 1);
   if (!name) return;
   for (let i=0; i<amt; i++) send({ event:'gw_cmd', cmd:'gw_sub_ticket', user:name });
   log(`-${amt} Ticket(s) -> ${name}`, 'gold');
@@ -208,7 +209,7 @@ function resetAll() {
 
 // ── Keyword ───────────────────────────────────────────────
 function setKeyword() {
-  const kw = document.getElementById('kw-input').value.trim();
+  const kw = CC.validate.sanitize(document.getElementById('kw-input').value, 'keyword');
   send({ event:'gw_cmd', cmd:'gw_set_keyword', keyword: kw });
   log(`Keyword gesetzt: "${kw}"`, 'cyan');
 }
